@@ -12,6 +12,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import bcrypt
 import psycopg
 from dotenv import load_dotenv
 
@@ -31,6 +32,9 @@ TABLES = [
     "user_visits",
     "sent_emails",
 ]
+
+# Made-up password for the seeded patients, for demos only. Only its bcrypt hash is stored.
+DEMO_PASSWORD = "clinicdemo"
 
 ADMIN = {
     "full_name": "David",
@@ -64,6 +68,11 @@ SLOT = timedelta(minutes=30)
 # (start, end) of each block of the clinic day, clinic time
 DAY_BLOCKS = [(time(9, 0), time(12, 0)), (time(13, 0), time(17, 0))]
 CALENDAR_DAYS = 14
+
+
+def hash_password(password: str) -> str:
+    """Return a bcrypt hash (with its own random salt) as text."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def clinic_weekdays(today: date) -> list[date]:
@@ -121,11 +130,12 @@ def main() -> int:
         # -- Patients (plan looked up by code)
         cur.executemany(
             "insert into users (role, full_name, email, phone, date_of_birth, "
-            "                   insurance_plan_id, insurance_member_id, created_by, updated_by) "
-            "select 'patient', %s, %s, %s, %s, p.id, %s, %s, %s "
+            "                   insurance_plan_id, insurance_member_id, password_hash, "
+            "                   created_by, updated_by) "
+            "select 'patient', %s, %s, %s, %s, p.id, %s, %s, %s, %s "
             "from insurance_plans p where p.code = %s",
             [
-                (name, email, phone, dob, member, david, david, plan)
+                (name, email, phone, dob, member, hash_password(DEMO_PASSWORD), david, david, plan)
                 for name, email, phone, dob, plan, member in PATIENTS
             ],
         )

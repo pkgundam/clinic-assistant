@@ -128,13 +128,16 @@ create unique index user_appointments_booking_code_uq
     on user_appointments (booking_code) where not void_sw;
 
 -- ---------------------------------------------------------------- user_intake
--- One row per intake form. appointment_id stays empty until it is booked.
--- answers is keyed by a short question code, e.g. {"allergies": "penicillin"}.
+-- One row per question and answer on an intake form. appointment_id stays
+-- empty until the appointment is booked.
 create table user_intake (
     id              bigint generated always as identity primary key,
     user_id         bigint not null references users (id),
     appointment_id  bigint references user_appointments (id),
-    answers         jsonb not null default '{}'::jsonb,
+    thread_id       text not null,
+    question_key    text not null,
+    question        text not null,
+    answer          text not null,
     created_at      timestamptz not null default now(),
     created_by      bigint not null references users (id),
     updated_at      timestamptz not null default now(),
