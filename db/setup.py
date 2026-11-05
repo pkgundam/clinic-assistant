@@ -26,6 +26,8 @@ TABLES = [
     "doctor_calendar",
     "user_appointments",
     "user_intake",
+    "user_chats",
+    "user_chat_messages",
     "user_facts",
     "user_preferences",
     "user_notes",

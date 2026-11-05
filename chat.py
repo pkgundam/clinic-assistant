@@ -6,8 +6,8 @@ from dataclasses import asdict
 from getpass import getpass
 from uuid import uuid4
 
-from agents.clinic_agent import ask
 from services.auth import check_login, load_clinic_user
+from services.chats import ask_and_save
 
 
 def login():
@@ -48,7 +48,7 @@ def main():
             break
         if not user_input:
             continue
-        llm_answer = ask(user_input, clinic_user, thread_id)
+        llm_answer = ask_and_save(user_input, clinic_user, thread_id)["reply"]
         print(f"Assistant: {llm_answer}")
 
 

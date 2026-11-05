@@ -13,3 +13,12 @@ conn = psycopg.connect(
     autocommit=True,
     row_factory=dict_row,
 )
+
+# A second connection just for the conversation history (the checkpointer).
+# It is separate so it never writes inside the transactions that
+# book_appointment and cancel_appointment open on `conn`.
+checkpoint_conn = psycopg.connect(
+    os.environ["DATABASE_URL"],
+    autocommit=True,
+    row_factory=dict_row,
+)
