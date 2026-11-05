@@ -2,16 +2,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from getpass import getpass
 from uuid import uuid4
 
-import bcrypt
-
 from agents.clinic_agent import ask
-from models.clinic_user import ClinicUser
-from repositories import user_facts, user_notes, user_preferences
-from repositories.users import find_by_email
+from services.auth import check_login, load_clinic_user
 
 
 def login():
@@ -20,27 +16,10 @@ def login():
         email = input("Email: ").strip()
         password = getpass("Password: ")
 
-        user = find_by_email(email)
-        if (
-            user
-            and user.password_hash
-            and bcrypt.checkpw(password.encode(), user.password_hash.encode())
-        ):
+        user = check_login(email, password)
+        if user:
             return user
         print("Invalid email or password\n")
-
-
-def load_clinic_user(user):
-    """Load the user's profile, facts, preferences and notes (once, after login)."""
-    facts = user_facts.get_by_user(user.id)
-    preferences = user_preferences.get_by_user(user.id)
-    notes = user_notes.get_by_user(user.id)
-    return ClinicUser(
-        profile=replace(user, password_hash=None),  # the agent never sees the hash
-        facts=facts,
-        preferences=preferences,
-        notes=notes,
-    )
 
 
 def main():
