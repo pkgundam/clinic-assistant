@@ -21,7 +21,8 @@ def generate_title(question: str) -> str:
 def ask_and_save(question: str, clinic_user: ClinicUser, thread_id: str) -> dict:
     """Ask the agent and save the chat.
 
-    Returns {"reply": ..., "tool_calls": [...], "intent": ..., "judge_reason": ...}.
+    Returns {"reply": ..., "tool_calls": [...], "intent": ..., "judge_reason": ...,
+    "rejected_response": ..., "new_response": ...}.
     """
     # 0. Hide any social security number first, so it is never saved
     # and never reaches the judge, the agent or the title model.
@@ -56,4 +57,6 @@ def ask_and_save(question: str, clinic_user: ClinicUser, thread_id: str) -> dict
         "tool_calls": result["tool_calls"],
         "intent": result["intent"],
         "judge_reason": result["judge_reason"],
+        "rejected_response": result["rejected_response"],
+        "new_response": result["new_response"],
     }

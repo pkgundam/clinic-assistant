@@ -85,7 +85,8 @@ def chat(body: ChatRequest, authorization: str | None = Header(default=None)):
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    # {"reply": "...", "tool_calls": [{"name", "args", "result"}, ...], "intent": "...", "judge_reason": "..."}
+    # {"reply": "...", "tool_calls": [{"name", "args", "result"}, ...], "intent": "...", "judge_reason": "...",
+    # "rejected_response": "..." or None, "new_response": "..." or None}
     return ask_and_save(message, session["clinic_user"], session["thread_id"])
 
 

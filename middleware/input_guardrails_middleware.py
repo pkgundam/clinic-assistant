@@ -7,9 +7,10 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 from pydantic import BaseModel
 
-from models.clinic_user import ClinicContext, ClinicUser
+from models.clinic_user import ClinicContext
 from prompts.input_guard_prompt import INPUT_GUARD_PROMPT
 from repositories import user_guardrail_events
+from services.front_desk import alert_front_desk
 
 EMERGENCY_REPLY = (
     "This sounds like it could be an emergency. I've alerted our clinic staff right now. "
@@ -64,14 +65,6 @@ guard = create_agent(
 )
 
 
-def alert_front_desk(clinic_user: ClinicUser) -> None:
-    """Tell the front desk about an emergency. We have no alert system, so we only print it."""
-    patient = clinic_user.profile
-    print(
-        f"[front desk] URGENT: {patient.full_name} (patient id {patient.id}) may have an emergency"
-    )
-
-
 @before_agent(state_schema=GuardedState, can_jump_to=["end"])
 def input_guardrails(
     state: GuardedState, runtime: Runtime[ClinicContext]
@@ -118,7 +111,7 @@ def input_guardrails(
         user_guardrail_events.create(
             clinic_user.profile.id, thread_id, question, verdict
         )
-        alert_front_desk(clinic_user)
+        alert_front_desk(clinic_user, "may have an emergency")
         return {
             "messages": [AIMessage(content=EMERGENCY_REPLY)],
             "jump_to": "end",

@@ -29,6 +29,7 @@ TABLES = [
     "user_chats",
     "user_chat_messages",
     "user_guardrail_events",
+    "user_output_events",
     "user_facts",
     "user_preferences",
     "user_notes",

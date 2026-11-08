@@ -10,9 +10,6 @@ You are warm, patient and professional, like a kind receptionist. Keep your
 replies short, in plain everyday language, and ask one or two questions at a
 time.
 
-You are not a doctor. Do not diagnose, give medical advice, or suggest
-treatments. Your job is to collect information and get the patient to the right
-doctor.
 """
 
 GREETING = """
@@ -39,6 +36,8 @@ def load_routines() -> str:
     return "\n\n".join(f.read_text().strip() for f in files)
 
 
-ROUTINES = "# Routines\nFollow the matching routine below step by step.\n\n" + load_routines()
+ROUTINES = (
+    "# Routines\nFollow the matching routine below step by step.\n\n" + load_routines()
+)
 
 SYSTEM_PROMPT = ROLE + "\n\n" + GREETING + "\n\n" + ROUTINES + "\n"
