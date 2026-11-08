@@ -28,6 +28,23 @@ def get_details_by_user(user_id: int) -> list[dict]:
     return conn.execute(DETAILS_SQL + " order by c.starts_at", (user_id,)).fetchall()
 
 
+def find_all_details() -> list[dict]:
+    """Return every appointment in the clinic, for every patient, ordered by slot time.
+
+    Each row is a dict with: booking_code, status, reason, patient_name, doctor_name, starts_at
+    """
+    return conn.execute(
+        "select a.booking_code, a.status, a.reason, u.full_name as patient_name, "
+        "d.full_name as doctor_name, c.starts_at "
+        "from user_appointments a "
+        "join users u on u.id = a.user_id "
+        "join doctor_calendar c on c.id = a.calendar_id "
+        "join doctors d on d.id = c.doctor_id "
+        "where not a.void_sw "
+        "order by c.starts_at"
+    ).fetchall()
+
+
 def find_details_by_booking_code(user_id: int, booking_code: str) -> dict | None:
     """Return one appointment's details, but only if it belongs to this user."""
     return conn.execute(

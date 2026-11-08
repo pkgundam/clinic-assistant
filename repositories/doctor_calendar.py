@@ -17,10 +17,10 @@ def get_open_slots(doctor_id: int, day_start: datetime, day_end: datetime) -> li
 
 
 def book_if_open(calendar_id: int, user_id: int) -> DoctorCalendar | None:
-    """Mark the slot booked, but only if it is still open. Returns None if it wasn't."""
+    """Mark the slot booked, but only if it is still open and in the future. Returns None if not."""
     row = conn.execute(
         "update doctor_calendar set status = 'booked', updated_by = %s "
-        "where id = %s and status = 'open' and not void_sw returning *",
+        "where id = %s and status = 'open' and not void_sw and starts_at > now() returning *",
         (user_id, calendar_id),
     ).fetchone()
     return DoctorCalendar(**row) if row else None

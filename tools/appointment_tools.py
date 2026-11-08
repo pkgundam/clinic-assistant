@@ -4,6 +4,7 @@ from config.clinic import clinic_time
 from config.database import conn
 from models.clinic_user import ClinicContext
 from repositories import doctor_calendar, user_appointments, user_intake, user_visits
+from tools.errors import ToolError
 
 
 def save_user_visit(user_id: int, appointment: dict, reason: str) -> None:
@@ -18,7 +19,9 @@ def save_user_visit(user_id: int, appointment: dict, reason: str) -> None:
 
 
 @tool
-def book_appointment(calendar_id: int, reason: str, runtime: ToolRuntime[ClinicContext]) -> str:
+def book_appointment(
+    calendar_id: int, reason: str, runtime: ToolRuntime[ClinicContext]
+) -> dict:
     """Book a calendar slot for the logged-in user and return the booking code.
 
     Only call it after the user has chosen a slot (calendar_id comes from
@@ -41,7 +44,9 @@ def book_appointment(calendar_id: int, reason: str, runtime: ToolRuntime[ClinicC
         # 1. mark the slot booked, only if it is still open
         slot = doctor_calendar.book_if_open(calendar_id, user.id)
         if slot is None:
-            return f"Slot {calendar_id} is not available. Ask the user to pick another slot."
+            raise ToolError(
+                f"Slot {calendar_id} is not available or is in the past. Ask the user to pick another slot."
+            )
 
         # 2. insert the appointment
         appointment = user_appointments.create(user.id, calendar_id, reason)
@@ -50,17 +55,25 @@ def book_appointment(calendar_id: int, reason: str, runtime: ToolRuntime[ClinicC
         user_intake.link_to_appointment(user.id, thread_id, appointment.id)
 
         # 4. save a visit with a summary of the booking
-        details = user_appointments.find_details_by_booking_code(user.id, appointment.booking_code)
+        details = user_appointments.find_details_by_booking_code(
+            user.id, appointment.booking_code
+        )
         save_user_visit(user.id, details, reason)
 
-    return (
-        f"Booked! Booking code {appointment.booking_code} with {details['doctor_name']} "
-        f"on {clinic_time(details['starts_at'])}."
-    )
+    return {
+        "status": "success",
+        "message": (
+            f"Booked! Booking code {appointment.booking_code} with {details['doctor_name']} "
+            f"on {clinic_time(details['starts_at'])}."
+        ),
+        "booking_code": appointment.booking_code,
+        "doctor": details["doctor_name"],
+        "starts_at": clinic_time(details["starts_at"]),
+    }
 
 
 @tool
-def get_my_appointments(runtime: ToolRuntime[ClinicContext]) -> str:
+def get_my_appointments(runtime: ToolRuntime[ClinicContext]) -> dict:
     """List all of the logged-in user's appointments with the doctor and time, ordered by time.
 
     Takes no arguments. Cancelled appointments are included and marked as cancelled.
@@ -72,16 +85,33 @@ def get_my_appointments(runtime: ToolRuntime[ClinicContext]) -> str:
     user = runtime.context.user.profile
     appointments = user_appointments.get_details_by_user(user.id)
     if not appointments:
-        return "No appointments found."
-    return "\n".join(
-        f"{a['booking_code']} [{a['status']}]: {a['doctor_name']} ({a['speciality']}) "
-        f"on {clinic_time(a['starts_at'])}. Reason: {a['reason']}"
-        for a in appointments
-    )
+        return {
+            "status": "success",
+            "message": "No appointments found.",
+            "appointments": [],
+        }
+
+    appointment_list = []
+    for a in appointments:
+        appointment_list.append(
+            {
+                "booking_code": a["booking_code"],
+                "status": a["status"],
+                "doctor": a["doctor_name"],
+                "speciality": a["speciality"],
+                "starts_at": clinic_time(a["starts_at"]),
+                "reason": a["reason"],
+            }
+        )
+    return {
+        "status": "success",
+        "message": f"{len(appointment_list)} appointments found.",
+        "appointments": appointment_list,
+    }
 
 
 @tool
-def cancel_appointment(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> str:
+def cancel_appointment(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> dict:
     """Cancel one of the logged-in user's appointments by its booking code and free the slot.
 
     Only works on appointments that belong to the user. Confirm with the user before cancelling.
@@ -99,12 +129,20 @@ def cancel_appointment(booking_code: str, runtime: ToolRuntime[ClinicContext]) -
     )
     # Guardrail: a code that is not this user's looks exactly like a code that doesn't exist.
     if appointment is None:
-        return f"No appointment with booking code {booking_code} was found for this user."
+        raise ToolError(
+            f"No appointment with booking code {booking_code} was found for this user."
+        )
     if appointment["status"] == "cancelled":
-        return f"Appointment {appointment['booking_code']} is already cancelled."
+        raise ToolError(
+            f"Appointment {appointment['booking_code']} is already cancelled."
+        )
 
     with conn.transaction():
         user_appointments.cancel(appointment["id"], user.id)
         doctor_calendar.set_open(appointment["calendar_id"], user.id)
 
-    return f"Cancelled appointment {appointment['booking_code']}. The slot is open again."
+    return {
+        "status": "success",
+        "message": f"Cancelled appointment {appointment['booking_code']}. The slot is open again.",
+        "booking_code": appointment["booking_code"],
+    }

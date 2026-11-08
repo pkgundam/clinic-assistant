@@ -6,7 +6,7 @@ from config.clinic import CLINIC_TZ
 
 
 @tool
-def get_current_datetime() -> str:
+def get_current_datetime() -> dict:
     """Get the current date and time in clinic time, with the weekday.
 
     Takes no arguments. Always call it before working out a relative date, because
@@ -17,4 +17,10 @@ def get_current_datetime() -> str:
     - "Do you have anything tomorrow morning?"
     """
     now = datetime.now(CLINIC_TZ)
-    return now.strftime("Today is %A %Y-%m-%d, the time is %I:%M %p %Z (clinic time).")
+    return {
+        "status": "success",
+        "message": now.strftime(
+            "Today is %A %Y-%m-%d, the time is %I:%M %p %Z (clinic time)."
+        ),
+        "date": now.strftime("%Y-%m-%d"),
+    }

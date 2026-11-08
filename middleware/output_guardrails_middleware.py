@@ -1,6 +1,6 @@
 from langchain.agents import AgentState, create_agent
 from langchain.agents.middleware import after_agent
-from langchain.messages import AIMessage, HumanMessage
+from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 from pydantic import BaseModel
@@ -14,6 +14,36 @@ from tools import clinic_tools
 ESCALATED_REPLY = (
     "Thanks for your patience. Someone from our staff will get back to you shortly."
 )
+
+# LangChain ends the run with this message when the model was called too many times.
+LIMIT_MESSAGE_START = "Model call limits exceeded"
+LIMIT_REPLY = (
+    "Sorry, I wasn't able to finish that. Please try again, or ask our staff for help."
+)
+
+# What a reply can claim: tool name -> (what it claims, the phrases that claim it).
+# If the reply says one of the phrases, that tool must have succeeded in this turn.
+ACTION_CLAIMS = {
+    "book_appointment": (
+        "the appointment was booked",
+        [
+            "is booked",
+            "you're booked",
+            "you are booked",
+            "has been booked",
+            "i've booked",
+            "i booked",
+        ],
+    ),
+    "cancel_appointment": (
+        "the appointment was cancelled",
+        ["is cancelled", "has been cancelled", "i've cancelled", "i cancelled"],
+    ),
+    "send_email": (
+        "an email was sent",
+        ["email sent", "i've sent", "i sent", "i've emailed", "i emailed"],
+    ),
+}
 
 # The name of every tool the agent has.
 TOOL_NAMES = [tool.name for tool in clinic_tools]
@@ -55,10 +85,42 @@ judge = create_agent(
 rewriter = create_agent(model="openai:gpt-4.1-mini", system_prompt=REWRITE_PROMPT)
 
 
-def check_reply(question: str, reply: str) -> tuple[OutputCheck, list[str], list[str]]:
+def check_actions(reply: str, messages: list) -> list[str]:
+    """Plain code, no model: does the reply claim an action that did not really happen?
+
+    Only this turn counts: the messages after the last HumanMessage.
+    Returns a list of problems, empty when every claim is true.
+    """
+    # Find the position of the last question the patient asked.
+    last_question = 0
+    for position, message in enumerate(messages):
+        if isinstance(message, HumanMessage):
+            last_question = position
+
+    # The tools that succeeded in this turn.
+    succeeded = []
+    for message in messages[last_question + 1 :]:
+        if isinstance(message, ToolMessage) and message.status == "success":
+            succeeded.append(message.name)
+
+    # The model often writes ’ instead of ', so make them the same before matching.
+    text = reply.lower().replace("’", "'")
+
+    problems = []
+    for tool_name, (claim, phrases) in ACTION_CLAIMS.items():
+        says_it_happened = any(phrase in text for phrase in phrases)
+        if says_it_happened and tool_name not in succeeded:
+            problems.append(f"it says {claim}, but {tool_name} did not succeed")
+    return problems
+
+
+def check_reply(
+    question: str, reply: str, action_problems: list[str]
+) -> tuple[OutputCheck, list[str], list[str]]:
     """Check one reply. Returns (verdict, tool_names_found, problems).
 
-    `problems` is a list of short sentences. It is empty when the reply is fine.
+    `action_problems` come from check_actions. `problems` is a list of short sentences,
+    and it is empty when the reply is fine.
     """
     result = judge.invoke(
         {
@@ -92,6 +154,7 @@ def check_reply(question: str, reply: str) -> tuple[OutputCheck, list[str], list
         problems.append("it describes our internal instructions or tools")
     if tool_names_found:
         problems.append("it mentions our tool names")
+    problems.extend(action_problems)
 
     return verdict, tool_names_found, problems
 
@@ -117,13 +180,26 @@ def rewrite_reply(question: str, reply: str, problems: list[str]) -> str:
 
 
 @after_agent(state_schema=OutputState)
-def output_guardrails(state: OutputState, runtime: Runtime[ClinicContext]) -> dict | None:
+def output_guardrails(
+    state: OutputState, runtime: Runtime[ClinicContext]
+) -> dict | None:
     """Check the agent's reply before the patient sees it.
 
     A reply that fails is rewritten once. If the rewrite fails too, the front desk is
     alerted and the patient gets a fixed reply.
     """
     reply = state["messages"][-1]
+
+    # LangChain stopped the agent because it called the model too many times.
+    # Its message is technical, so the patient gets a friendly one instead.
+    if isinstance(reply, AIMessage) and str(reply.content).startswith(
+        LIMIT_MESSAGE_START
+    ):
+        return {
+            "messages": [AIMessage(content=LIMIT_REPLY, id=reply.id)],
+            "rejected_response": reply.content,
+            "new_response": LIMIT_REPLY,
+        }
 
     # Nothing to check if the last message is not text from the model. No usage_metadata
     # means our own code wrote it (for example the input guard's fixed replies).
@@ -145,14 +221,18 @@ def output_guardrails(state: OutputState, runtime: Runtime[ClinicContext]) -> di
     thread_id = get_config()["configurable"]["thread_id"]
 
     # 1. check the reply
-    verdict, tool_names_found, problems = check_reply(question, reply.content)
+    action_problems = check_actions(reply.content, state["messages"])
+    verdict, tool_names_found, problems = check_reply(
+        question, reply.content, action_problems
+    )
     if not problems:
         return NOT_REWRITTEN
 
     # 2. rewrite it once, then check again
     ## we can do it maybe 3 times as needed.
     rewritten_reply = rewrite_reply(question, reply.content, problems)
-    _, _, new_problems = check_reply(question, rewritten_reply)
+    new_action_problems = check_actions(rewritten_reply, state["messages"])
+    _, _, new_problems = check_reply(question, rewritten_reply, new_action_problems)
 
     # 3. the rewrite is the final reply, unless it fails too
     escalated = bool(new_problems)

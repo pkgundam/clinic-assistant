@@ -8,7 +8,7 @@ from repositories import user_facts, user_notes, user_preferences
 
 
 @tool
-def get_user_facts(runtime: ToolRuntime[ClinicContext]) -> str:
+def get_user_facts(runtime: ToolRuntime[ClinicContext]) -> dict:
     """List the lasting health facts already saved for the logged-in user.
 
     Takes no arguments. Use it to check what is already known before saving
@@ -20,12 +20,16 @@ def get_user_facts(runtime: ToolRuntime[ClinicContext]) -> str:
     """
     facts = runtime.context.user.facts
     if not facts:
-        return "No facts saved yet."
-    return "\n".join(f"- {f.fact}" for f in facts)
+        return {"status": "success", "message": "No facts saved yet.", "facts": []}
+    return {
+        "status": "success",
+        "message": f"{len(facts)} facts saved.",
+        "facts": [f.fact for f in facts],
+    }
 
 
 @tool
-def save_user_fact(fact: str, runtime: ToolRuntime[ClinicContext]) -> str:
+def save_user_fact(fact: str, runtime: ToolRuntime[ClinicContext]) -> dict:
     """Save a lasting health detail about the logged-in user.
 
     Use it when the user tells you something about their health that will stay
@@ -44,11 +48,11 @@ def save_user_fact(fact: str, runtime: ToolRuntime[ClinicContext]) -> str:
     user_id = user.profile.id
     user_fact = user_facts.create(user_id, fact)
     user.facts.append(user_fact)
-    return f"Saved fact: {fact}"
+    return {"status": "success", "message": f"Saved fact: {fact}"}
 
 
 @tool
-def get_user_preferences(runtime: ToolRuntime[ClinicContext]) -> str:
+def get_user_preferences(runtime: ToolRuntime[ClinicContext]) -> dict:
     """List the preferences already saved for the logged-in user.
 
     Takes no arguments. Use it to check what is already known before saving
@@ -61,12 +65,20 @@ def get_user_preferences(runtime: ToolRuntime[ClinicContext]) -> str:
     """
     preferences = runtime.context.user.preferences
     if not preferences:
-        return "No preferences saved yet."
-    return "\n".join(f"- {p.preference}" for p in preferences)
+        return {
+            "status": "success",
+            "message": "No preferences saved yet.",
+            "preferences": [],
+        }
+    return {
+        "status": "success",
+        "message": f"{len(preferences)} preferences saved.",
+        "preferences": [p.preference for p in preferences],
+    }
 
 
 @tool
-def save_user_preference(preference: str, runtime: ToolRuntime[ClinicContext]) -> str:
+def save_user_preference(preference: str, runtime: ToolRuntime[ClinicContext]) -> dict:
     """Save how or when the logged-in user likes things done.
 
     Use it when the user says what they prefer, like a time of day, a doctor,
@@ -81,11 +93,11 @@ def save_user_preference(preference: str, runtime: ToolRuntime[ClinicContext]) -
     """
     user = runtime.context.user
     user.preferences.append(user_preferences.create(user.profile.id, preference))
-    return f"Saved preference: {preference}"
+    return {"status": "success", "message": f"Saved preference: {preference}"}
 
 
 @tool
-def get_user_notes(runtime: ToolRuntime[ClinicContext]) -> str:
+def get_user_notes(runtime: ToolRuntime[ClinicContext]) -> dict:
     """List the other observations already saved about the logged-in user.
 
     Takes no arguments. Use it to check what is already known before saving
@@ -97,12 +109,16 @@ def get_user_notes(runtime: ToolRuntime[ClinicContext]) -> str:
     """
     notes = runtime.context.user.notes
     if not notes:
-        return "No notes saved yet."
-    return "\n".join(f"- {n.note}" for n in notes)
+        return {"status": "success", "message": "No notes saved yet.", "notes": []}
+    return {
+        "status": "success",
+        "message": f"{len(notes)} notes saved.",
+        "notes": [n.note for n in notes],
+    }
 
 
 @tool
-def save_user_note(note: str, runtime: ToolRuntime[ClinicContext]) -> str:
+def save_user_note(note: str, runtime: ToolRuntime[ClinicContext]) -> dict:
     """Save another useful observation about the logged-in user.
 
     Use it for anything helpful that is not a lasting health fact and not a
@@ -117,4 +133,4 @@ def save_user_note(note: str, runtime: ToolRuntime[ClinicContext]) -> str:
     """
     user = runtime.context.user
     user.notes.append(user_notes.create(user.profile.id, note))
-    return f"Saved note: {note}"
+    return {"status": "success", "message": f"Saved note: {note}"}

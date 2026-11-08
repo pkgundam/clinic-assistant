@@ -3,10 +3,11 @@ from langchain.tools import ToolRuntime, tool
 from config.clinic import clinic_time
 from models.clinic_user import ClinicContext
 from repositories import sent_emails, user_appointments
+from tools.errors import ToolError
 
 
 @tool
-def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> str:
+def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> dict:
     """Email the appointment details to the logged-in user.
 
     Use it after booking, or when the user asks for their appointment details by email.
@@ -24,7 +25,9 @@ def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> str:
         user.id, booking_code.strip().upper()
     )
     if appointment is None:
-        return f"No appointment with booking code {booking_code} was found for this user."
+        raise ToolError(
+            f"No appointment with booking code {booking_code} was found for this user."
+        )
 
     subject = f"Your appointment {appointment['booking_code']}"
     body = (
@@ -37,6 +40,12 @@ def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> str:
     )
 
     # We have no email server, so we only print the email and store it.
-    print(f"\n--- FAKE EMAIL to {user.email} ---\nSubject: {subject}\n\n{body}---------------------")
+    print(
+        f"\n--- FAKE EMAIL to {user.email} ---\nSubject: {subject}\n\n{body}---------------------"
+    )
     sent_emails.create(user.id, appointment["id"], user.email, subject, body)
-    return f"Email sent to {user.email}."
+    return {
+        "status": "success",
+        "message": f"Email sent to {user.email}.",
+        "to": user.email,
+    }

@@ -111,11 +111,11 @@ def main() -> int:
         cur.execute(schema_sql)
 
         # -- David, the admin. He is his own creator, so insert first and then
-        #    point his audit columns at his own id.
+        #    point his audit columns at his own id. He logs in with the demo password too.
         cur.execute(
-            "insert into users (role, full_name, email, phone) "
-            "values ('admin', %(full_name)s, %(email)s, %(phone)s)",
-            ADMIN,
+            "insert into users (role, full_name, email, phone, password_hash) "
+            "values ('admin', %(full_name)s, %(email)s, %(phone)s, %(password_hash)s)",
+            {**ADMIN, "password_hash": hash_password(DEMO_PASSWORD)},
         )
         cur.execute(
             "update users set created_by = id, updated_by = id where email = %s",

@@ -1,3 +1,4 @@
+from tools.admin_tools import get_all_bookings
 from tools.appointment_tools import (
     book_appointment,
     cancel_appointment,
@@ -48,4 +49,6 @@ clinic_tools = [
     cancel_appointment,
     # notifications
     send_email,
+    # admin
+    get_all_bookings,
 ]

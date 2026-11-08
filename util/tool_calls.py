@@ -1,3 +1,5 @@
+import json
+
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 
 
@@ -17,6 +19,13 @@ def get_tool_calls(messages: list) -> list[dict]:
         m.tool_call_id: m.content for m in this_turn if isinstance(m, ToolMessage)
     }
 
+    def as_dict(content):
+        """Tool results are JSON text. Turn them back into a dict (plain text stays text)."""
+        try:
+            return json.loads(content)
+        except (TypeError, ValueError):
+            return content
+
     tool_calls = []
     for message in this_turn:
         if isinstance(message, AIMessage):
@@ -25,7 +34,7 @@ def get_tool_calls(messages: list) -> list[dict]:
                     {
                         "name": call["name"],
                         "args": call["args"],
-                        "result": results.get(call["id"]),
+                        "result": as_dict(results.get(call["id"])),
                     }
                 )
     return tool_calls

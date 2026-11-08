@@ -2,6 +2,7 @@ from langchain.tools import ToolRuntime, tool
 
 from models.clinic_user import ClinicContext
 from repositories import user_intake
+from tools.errors import ToolError
 
 # The questions we collect before booking.
 INTAKE_KEYS = [
@@ -22,8 +23,11 @@ INTAKE_KEYS = [
 
 @tool
 def save_intake_answer(
-    question_key: str, question_text: str, user_answer: str, runtime: ToolRuntime[ClinicContext]
-) -> str:
+    question_key: str,
+    question_text: str,
+    user_answer: str,
+    runtime: ToolRuntime[ClinicContext],
+) -> dict:
     """Save the user's answer to one intake question for this chat.
 
     Call it each time the user answers an intake question. Saving the same
@@ -44,16 +48,18 @@ def save_intake_answer(
         user_answer: What the user answered.
     """
     if question_key not in INTAKE_KEYS:
-        return f"Invalid question_key '{question_key}'. Use one of: {', '.join(INTAKE_KEYS)}."
+        raise ToolError(
+            f"Invalid question_key '{question_key}'. Use one of: {', '.join(INTAKE_KEYS)}."
+        )
 
     user = runtime.context.user.profile
     thread_id = runtime.config["configurable"]["thread_id"]
     user_intake.save(user.id, thread_id, question_key, question_text, user_answer)
-    return f"Saved {question_key}: {user_answer}"
+    return {"status": "success", "message": f"Saved {question_key}: {user_answer}"}
 
 
 @tool
-def get_intake_answers(runtime: ToolRuntime[ClinicContext]) -> str:
+def get_intake_answers(runtime: ToolRuntime[ClinicContext]) -> dict:
     """Get the intake answers saved so far in this chat, and which ones are still missing.
 
     Takes no arguments. Use it to see what is left to ask, so you never ask the
@@ -67,7 +73,13 @@ def get_intake_answers(runtime: ToolRuntime[ClinicContext]) -> str:
     thread_id = runtime.config["configurable"]["thread_id"]
     answers = user_intake.get_open(user.id, thread_id)
 
-    saved = "\n".join(f"- {a.question_key}: {a.answer}" for a in answers) or "(nothing yet)"
-    answered_keys = {a.question_key for a in answers}
-    missing = [key for key in INTAKE_KEYS if key not in answered_keys]
-    return f"Answers so far:\n{saved}\n\nStill missing: {', '.join(missing) or 'nothing'}"
+    saved = {}
+    for a in answers:
+        saved[a.question_key] = a.answer
+    missing = [key for key in INTAKE_KEYS if key not in saved]
+    return {
+        "status": "success",
+        "message": f"{len(saved)} answers saved, {len(missing)} still missing.",
+        "answers": saved,
+        "missing": missing,
+    }

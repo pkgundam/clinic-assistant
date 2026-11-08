@@ -15,6 +15,7 @@ def user_profile_middleware(request: ModelRequest) -> str:
     user_profile = (
         "<user_profile>\n"
         f"Name: {profile.full_name}\n"
+        f"Role: {profile.role}\n"
         f"Email: {profile.email}\n"
         f"Phone: {profile.phone}\n"
         f"Date of birth: {profile.date_of_birth}\n"
