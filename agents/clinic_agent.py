@@ -29,7 +29,7 @@ def ask(question: str, clinic_user: ClinicUser, thread_id: str) -> dict:
     """Send the user's question to the agent.
 
     Returns the reply, the tools it used and the tokens this turn cost:
-    {"reply", "tool_calls", "input_tokens", "output_tokens"}
+    {"reply", "tool_calls", "intent", "judge_reason", "input_tokens", "output_tokens"}
     """
     result = agent.invoke(
         {"messages": [HumanMessage(question)]},
@@ -45,6 +45,8 @@ def ask(question: str, clinic_user: ClinicUser, thread_id: str) -> dict:
     return {
         "reply": llm_answer,
         "tool_calls": tool_calls,
+        "intent": result["intent"],
+        "judge_reason": result["judge_reason"],
         "input_tokens": token_usage["input_tokens"],
         "output_tokens": token_usage["output_tokens"],
     }

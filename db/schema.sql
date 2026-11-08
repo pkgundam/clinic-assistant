@@ -5,6 +5,7 @@
 -- rules are partial indexes that only look at rows where void_sw = false.
 
 -- ---------------------------------------------------------------- drop
+drop table if exists user_guardrail_events cascade;
 drop table if exists user_chat_messages cascade;
 drop table if exists user_chats         cascade;
 drop table if exists sent_emails        cascade;
@@ -179,6 +180,25 @@ create table user_chat_messages (
     updated_at          timestamptz not null default now(),
     updated_by          bigint not null references users (id),
     void_sw             boolean not null default false
+);
+
+-- ---------------------------------------------------------------- user_guardrail_events
+-- One row for every emergency and every unsafe message the input judge catches.
+create table user_guardrail_events (
+    id              bigint generated always as identity primary key,
+    user_id         bigint not null references users (id),
+    thread_id       text not null,
+    question        text not null,
+    safe            boolean not null,
+    injection_type  text not null,
+    emergency       boolean not null,
+    intent          text not null,
+    reason          text not null,
+    created_at      timestamptz not null default now(),
+    created_by      bigint not null references users (id),
+    updated_at      timestamptz not null default now(),
+    updated_by      bigint not null references users (id),
+    void_sw         boolean not null default false
 );
 
 -- ---------------------------------------------------------------- per-user memory

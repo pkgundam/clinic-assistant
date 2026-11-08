@@ -28,6 +28,7 @@ TABLES = [
     "user_intake",
     "user_chats",
     "user_chat_messages",
+    "user_guardrail_events",
     "user_facts",
     "user_preferences",
     "user_notes",

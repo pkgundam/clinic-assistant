@@ -3,6 +3,7 @@ from langchain.chat_models import init_chat_model
 from agents.clinic_agent import ask
 from models.clinic_user import ClinicUser
 from repositories import user_chat_messages, user_chats
+from util.redact import redact
 
 title_model = init_chat_model("openai:gpt-5.4")
 
@@ -18,7 +19,14 @@ def generate_title(question: str) -> str:
 
 
 def ask_and_save(question: str, clinic_user: ClinicUser, thread_id: str) -> dict:
-    """Ask the agent and save the chat. Returns {"reply": ..., "tool_calls": [...]}."""
+    """Ask the agent and save the chat.
+
+    Returns {"reply": ..., "tool_calls": [...], "intent": ..., "judge_reason": ...}.
+    """
+    # 0. Hide any social security number first, so it is never saved
+    # and never reaches the judge, the agent or the title model.
+    question = redact(question)
+
     user_id = clinic_user.profile.id
 
     # 1. create a new chat if this is the first message in this thread,
@@ -37,9 +45,15 @@ def ask_and_save(question: str, clinic_user: ClinicUser, thread_id: str) -> dict
         user_id,
     )
 
-    # 5. Only the first answer of a chat needs a title.
-    if chat.title is None:
+    # 5. Only the first answer of a chat needs a title, and only if the agent ran.
+    # The judge's fixed replies have no token counts, so 0 means the agent never ran.
+    if chat.title is None and result["input_tokens"] > 0:
         chat_title = generate_title(question)
         user_chats.save_title(chat.id, chat_title, user_id)
 
-    return {"reply": result["reply"], "tool_calls": result["tool_calls"]}
+    return {
+        "reply": result["reply"],
+        "tool_calls": result["tool_calls"],
+        "intent": result["intent"],
+        "judge_reason": result["judge_reason"],
+    }
