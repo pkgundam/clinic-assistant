@@ -25,6 +25,8 @@ implementation steps:
    `verdict: InputCheck = result["structured_response"]` (the fake InputCheck with
    reason "TEMPORARY: judge result ignored"), so the judge's real verdict is used again.
    keep the "User's role: ..." line we added to the judge's message in the last step
+   also in prompts/routines/1_new_appointment_routine.md step 5: a date with no year or month
+   ("Monday the 16th", "Friday") is worked out from get_current_datetime too, never ask for the year
 1. db: add the user_approvals table from step-13-dml.sql to db/schema.sql (after user_output_events)
    and add "drop table if exists user_approvals cascade;" at the top of the drop list.
    add "user_approvals" to TABLES in db/setup.py
