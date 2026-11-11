@@ -32,3 +32,17 @@ def set_open(calendar_id: int, user_id: int) -> None:
         "update doctor_calendar set status = 'open', updated_by = %s where id = %s",
         (user_id, calendar_id),
     )
+
+
+def find_slot_details(calendar_id: int) -> dict | None:
+    """Return a slot with its doctor: {"calendar_id", "doctor_name", "speciality", "starts_at"}.
+
+    None if there is no such slot.
+    """
+    return conn.execute(
+        "select c.id as calendar_id, d.full_name as doctor_name, d.speciality, c.starts_at "
+        "from doctor_calendar c "
+        "join doctors d on d.id = c.doctor_id "
+        "where c.id = %s and not c.void_sw",
+        (calendar_id,),
+    ).fetchone()

@@ -6,8 +6,15 @@ from repositories import sent_emails, user_appointments
 from tools.errors import ToolError
 
 
+def email_subject(booking_code: str) -> str:
+    """The subject of the appointment email. The front desk sees it before the email is sent."""
+    return f"Your appointment {booking_code}"
+
+
 @tool
-def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> dict:
+def send_email(
+    booking_code: str, runtime: ToolRuntime[ClinicContext], note: str = ""
+) -> dict:
     """Email the appointment details to the logged-in user.
 
     Use it after booking, or when the user asks for their appointment details by email.
@@ -19,6 +26,7 @@ def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> dict:
 
     Args:
         booking_code: The booking code, like APT-770460.
+        note: Leave empty. Only the front desk adds a note.
     """
     user = runtime.context.user.profile
     appointment = user_appointments.find_details_by_booking_code(
@@ -29,7 +37,7 @@ def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> dict:
             f"No appointment with booking code {booking_code} was found for this user."
         )
 
-    subject = f"Your appointment {appointment['booking_code']}"
+    subject = email_subject(appointment["booking_code"])
     body = (
         f"Hi {user.full_name},\n\n"
         f"Your appointment is {appointment['status']}.\n"
@@ -38,6 +46,9 @@ def send_email(booking_code: str, runtime: ToolRuntime[ClinicContext]) -> dict:
         f"When: {clinic_time(appointment['starts_at'])}\n"
         f"Reason: {appointment['reason']}\n"
     )
+    # The front desk can add a note when it approves the email.
+    if note:
+        body += f"\nNote from the clinic: {note}\n"
 
     # We have no email server, so we only print the email and store it.
     print(

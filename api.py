@@ -5,22 +5,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import secrets
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from repositories import user_chat_messages, user_chats
+from repositories import user_approvals, user_chat_messages, user_chats
+from services.approvals import (
+    AlreadyDecided,
+    ApprovalNotFound,
+    ResumeFailed,
+    decide_approval,
+    list_pending,
+)
 from services.auth import check_login, load_clinic_user
 from services.chats import ask_and_save
 
 app = FastAPI(title="Clinic Assistant API")
 
-# Only the web UI running on localhost:3000 may call this API from a browser.
+# Only the web UI may call this API from a browser. It runs on localhost:3000 or 3500.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3500"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -38,6 +46,12 @@ class LoginRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+
+
+class DecideRequest(BaseModel):
+    decision: Literal["approve", "edit", "reject"]
+    args: dict | None = None  # edit: only the arguments that change
+    reason: str | None = None  # reject: why, the patient is told
 
 
 # Plain `def` (not `async def`) because ask_and_save() is blocking: FastAPI runs these
@@ -77,6 +91,29 @@ def get_session(authorization: str | None) -> dict:
     return session
 
 
+def get_admin_session(authorization: str | None) -> dict:
+    """Like get_session, but only for the front desk (admins). Anyone else gets 403."""
+    session = get_session(authorization)
+    # The role comes from the login, never from the request.
+    if session["clinic_user"].profile.role != "admin":
+        raise HTTPException(status_code=403, detail="Only the front desk can do this")
+    return session
+
+
+def chat_messages(chat_id: int) -> list[dict]:
+    """The saved questions and answers of a chat, oldest first."""
+    messages = []
+    for message in user_chat_messages.find_by_chat(chat_id):
+        messages.append(
+            {
+                "question": message.question,
+                "ai_answer": message.ai_answer,
+                "message_sent_at": message.message_sent_at,
+            }
+        )
+    return messages
+
+
 @app.post("/chat")
 def chat(body: ChatRequest, authorization: str | None = Header(default=None)):
     session = get_session(authorization)
@@ -86,7 +123,7 @@ def chat(body: ChatRequest, authorization: str | None = Header(default=None)):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     # {"reply": "...", "tool_calls": [{"name", "args", "result"}, ...], "intent": "...", "judge_reason": "...",
-    # "rejected_response": "..." or None, "new_response": "..." or None}
+    # "rejected_response": "..." or None, "new_response": "..." or None, "waiting_for_approval": True/False}
     return ask_and_save(message, session["clinic_user"], session["thread_id"])
 
 
@@ -132,13 +169,67 @@ def open_chat(thread_id: str, authorization: str | None = Header(default=None)):
 
     session["thread_id"] = saved_chat.thread_id
 
-    messages = []
-    for message in user_chat_messages.find_by_chat(saved_chat.id):
-        messages.append(
-            {
-                "question": message.question,
-                "ai_answer": message.ai_answer,
-                "message_sent_at": message.message_sent_at,
-            }
+    return {
+        "thread_id": saved_chat.thread_id,
+        "title": saved_chat.title,
+        "messages": chat_messages(saved_chat.id),
+        "waiting_for_approval": user_approvals.is_waiting(saved_chat.thread_id),
+    }
+
+
+@app.get("/chats/{thread_id}/messages")
+def get_chat_messages(thread_id: str, authorization: str | None = Header(default=None)):
+    """The messages of one of the user's chats. The patient UI polls this while it waits
+    for the front desk. Unlike open, it does not change which chat /chat writes to."""
+    session = get_session(authorization)
+    user_id = session["clinic_user"].profile.id
+
+    saved_chat = user_chats.find_by_thread(user_id, thread_id)
+    if saved_chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    return {
+        "thread_id": saved_chat.thread_id,
+        "title": saved_chat.title,
+        "messages": chat_messages(saved_chat.id),
+        "waiting_for_approval": user_approvals.is_waiting(saved_chat.thread_id),
+    }
+
+
+@app.get("/admin/approvals")
+def list_approvals(authorization: str | None = Header(default=None)):
+    """Front desk only: every booking and email waiting for a decision, oldest first."""
+    get_admin_session(authorization)
+    # [{"id", "patient_name", "tool_name", "args", "details", "created_at"}, ...]
+    return list_pending()
+
+
+@app.post("/admin/approvals/{approval_id}/decide")
+def decide(
+    approval_id: int, body: DecideRequest, authorization: str | None = Header(default=None)
+):
+    """Front desk only: approve, edit or reject a paused booking or email.
+
+    The agent then carries on in the patient's chat. Returns {"reply", "waiting_for_approval"}.
+    """
+    session = get_admin_session(authorization)
+
+    if body.decision == "edit" and not body.args:
+        raise HTTPException(status_code=400, detail="An edit needs args")
+    reason = (body.reason or "").strip()
+    if body.decision == "reject" and not reason:
+        raise HTTPException(status_code=400, detail="A reject needs a reason")
+
+    try:
+        return decide_approval(
+            approval_id, body.decision, body.args, reason, session["clinic_user"].profile
         )
-    return {"thread_id": saved_chat.thread_id, "title": saved_chat.title, "messages": messages}
+    except ApprovalNotFound:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    except AlreadyDecided:
+        raise HTTPException(status_code=409, detail="This approval was already decided")
+    except ResumeFailed:
+        # The approval is pending again, so the front desk can click again.
+        raise HTTPException(
+            status_code=502, detail="The assistant could not carry on. Please try again."
+        )
