@@ -49,6 +49,7 @@ def build_result(result) -> dict:
     if result.interrupts:
         # Paused before book_appointment or send_email. The model makes one tool call
         # at a time, so there is only one action to approve.
+        # this gives us which tool call is paused.
         action = result.interrupts[0].value["action_requests"][0]
         paused = {"tool_name": action["name"], "args": action["args"]}
         reply = PAUSED_REPLY
@@ -100,6 +101,9 @@ def resume(decision: dict, clinic_user: ClinicUser, thread_id: str) -> dict:
     The agent runs as the patient (clinic_user), not as the admin.
     Returns the same dict as ask().
     """
+
+    # 1. The front desk has approved, edited or rejected the tool call.
+    # 2. The agent resumes the same chat with the new information.
     result = agent.invoke(
         Command(resume={"decisions": [decision]}),
         config={"configurable": {"thread_id": thread_id}},

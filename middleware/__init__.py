@@ -36,6 +36,6 @@ clinic_middlewares = [
     summarize_old_messages,
     handle_tool_errors,
     *limit_middlewares,
-    human_in_the_loop,
+    human_in_the_loop,  ## this runs before the output guardrails, so the agent can pause before the tool runs
     output_guardrails,
 ]

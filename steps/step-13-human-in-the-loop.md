@@ -5,7 +5,6 @@ so before it books an appointment or sends an email, it stops and asks the front
 
 brief:
 
-- first, remove the temporary override we added in the last video, so the input judge works again
 - only two tools pause: book_appointment and send_email. everything else runs as before
 - LangChain's built-in HumanInTheLoopMiddleware does the pause for us
 - the front desk (David, our admin) decides. he has three choices:
@@ -13,10 +12,12 @@ brief:
 - while it waits, the patient sees "I've sent this to the front desk" and cannot send a new message in that chat
 - the paused chat is saved in Postgres, so it can wait a minute or an hour, even across a restart
 - every pause is saved as a row in a new table, user_approvals, so the front desk can see the list
-- two new admin endpoints: one lists the waiting requests, one approves, edits or rejects a request.
-  after the decision, the agent carries on from where it stopped
-- the list shows the doctor and the time, not ids, so David can read it at a glance
-- if something breaks after David decides, the request goes back on his list and he can click again
+- two new admin API endpoints:
+  - one lists the waiting requests
+    - the list shows the doctor and the time, not ids, so David can read it at a glance
+  - one approves, edits or rejects a request
+    - after the decision, the agent carries on from where it stopped
+    - if something breaks after David decides, the request goes back on his list and he can click again
 - I already created the user_approvals table in Neon (step-13-dml.sql)
 
 implementation steps:
@@ -59,7 +60,7 @@ implementation steps:
      this gives the admin something to edit, like "Please bring your knee X-ray."
    - move the subject into a small function email_subject(booking_code) -> "Your appointment {booking_code}"
      so the admin list can show the same subject before the email is sent
-6. middleware/__init__.py: add the HITL middleware
+6. middleware/**init**.py: add the HITL middleware
 
    ```python
    human_in_the_loop = HumanInTheLoopMiddleware(
@@ -71,12 +72,13 @@ implementation steps:
    ```
 
    put it in clinic_middlewares after the limit middlewares and before output_guardrails
+
 7. agents/clinic_agent.py:
    - one tool call at a time: build the model with
      init_chat_model("openai:gpt-5.4", model_kwargs={"parallel_tool_calls": False}).
      then every pause has exactly one action for the front desk
      (without it, "send me 3 emails" pauses with 3 actions and resuming with 1 decision fails)
-   - one tool call per model call means more model calls, so in middleware/__init__.py raise
+   - one tool call per model call means more model calls, so in middleware/**init**.py raise
      ModelCallLimitMiddleware(run_limit=15) to run_limit=25. a patient who gives every intake
      answer in one message needs about 20
    - call agent.invoke(..., version="v2"). the result is then a GraphOutput:
@@ -115,7 +117,7 @@ implementation steps:
      - None if the slot or booking code matches nothing
    - list_pending() -> list of dicts: id, patient_name, tool_name, args, details, created_at.
      args stays exactly as the agent wrote it (an edit starts from it), details is only for reading
-   decide_approval(approval_id, decision, args, reason, admin) -> dict
+     decide_approval(approval_id, decision, args, reason, admin) -> dict
    - three small exceptions: ApprovalNotFound, AlreadyDecided and ResumeFailed
      (the API turns them into 404, 409 and 502)
    - load the approval, ApprovalNotFound if missing
